@@ -100,6 +100,7 @@ An SSZ object is called zeroed (and thus, `is_zero(object)` returns true) if it 
 ### Illegal types
 
 - Empty vector types (`Vector[type, 0]`, `Bitvector[0]`) are illegal.
+- Lists limited to 0 values (`List[type, 0]`) are illegal.
 - Containers with no fields are illegal.
 - The `null` type is only legal as the first type in a union subtype (i.e. with type index zero).
 
