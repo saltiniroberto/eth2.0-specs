@@ -128,6 +128,7 @@ class Store(object):
     checkpoint_states: Dict[Checkpoint, BeaconState] = field(default_factory=dict)
     latest_messages: Dict[ValidatorIndex, LatestMessage] = field(default_factory=dict)
     unrealized_justifications: Dict[Root, Checkpoint] = field(default_factory=dict)
+    highest_voting_source: Checkpoint
 ```
 
 #### `get_forkchoice_store`
@@ -157,7 +158,8 @@ def get_forkchoice_store(anchor_state: BeaconState, anchor_block: BeaconBlock) -
         blocks={anchor_root: copy(anchor_block)},
         block_states={anchor_root: copy(anchor_state)},
         checkpoint_states={justified_checkpoint: copy(anchor_state)},
-        unrealized_justifications={anchor_root: justified_checkpoint}
+        unrealized_justifications={anchor_root: justified_checkpoint},
+        highest_voting_source=finalized_checkpoint
     )
 ```
 
@@ -261,22 +263,13 @@ def filter_block_tree(store: Store, block_root: Root, blocks: Dict[Root, BeaconB
             return True
         return False
 
-    current_epoch = compute_epoch_at_slot(get_current_slot(store))
     voting_source = get_voting_source(store, block_root)
 
     # The voting source should be at the same height as the store's justified checkpoint
     correct_justified = (
         store.justified_checkpoint.epoch == GENESIS_EPOCH
-        or voting_source.epoch == store.justified_checkpoint.epoch
+        or voting_source.epoch >= store.highest_voting_source.epoch
     )
-
-    # If the previous epoch is justified, the block should be pulled-up. In this case, check that unrealized
-    # justification is higher than the store and that the voting source is not more than two epochs ago
-    if not correct_justified and is_previous_epoch_justified(store):
-        correct_justified = (
-            store.unrealized_justifications[block_root].epoch >= store.justified_checkpoint.epoch and
-            voting_source.epoch + 2 >= current_epoch
-        )
 
     finalized_slot = compute_start_slot_at_epoch(store.finalized_checkpoint.epoch)
     correct_finalized = (
@@ -325,6 +318,17 @@ def get_head(store: Store) -> Root:
         # Sort by latest attesting balance with ties broken lexicographically
         # Ties broken by favoring block with lexicographically higher root
         head = max(children, key=lambda root: (get_weight(store, root), root))
+```
+
+#### `updated_highest_voting_source`
+
+```python
+def updated_highest_voting_source(store: Store):
+    head = get_head(store)
+    voting_source = get_voting_source(store, head)
+
+    if voting_source.epoch > store.highest_voting_source.epoch:
+        store.highest_voting_source = voting_source
 ```
 
 #### `update_checkpoints`
@@ -488,12 +492,16 @@ def on_tick(store: Store, time: uint64) -> None:
         previous_time = store.genesis_time + (get_current_slot(store) + 1) * SECONDS_PER_SLOT
         on_tick_per_slot(store, previous_time)
     on_tick_per_slot(store, time)
+
+    updated_highest_voting_source(store)
 ```
 
 #### `on_block`
 
 ```python
 def on_block(store: Store, signed_block: SignedBeaconBlock) -> None:
+    updated_highest_voting_source(store)
+
     block = signed_block.message
     # Parent block must be known
     assert block.parent_root in store.block_states
@@ -551,6 +559,8 @@ def on_attestation(store: Store, attestation: Attestation, is_from_block: bool=F
 
     # Update latest messages for attesting indices
     update_latest_messages(store, indexed_attestation.attesting_indices, attestation)
+
+    updated_highest_voting_source(store)
 ```
 
 #### `on_attester_slashing`
@@ -573,4 +583,6 @@ def on_attester_slashing(store: Store, attester_slashing: AttesterSlashing) -> N
     indices = set(attestation_1.attesting_indices).intersection(attestation_2.attesting_indices)
     for index in indices:
         store.equivocating_indices.add(index)
+
+    updated_highest_voting_source(store)
 ```
