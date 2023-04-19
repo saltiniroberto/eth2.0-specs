@@ -121,6 +121,7 @@ class Store(object):
     finalized_checkpoint: Checkpoint
     unrealized_justified_checkpoint: Checkpoint
     unrealized_finalized_checkpoint: Checkpoint
+    highest_voting_source: Checkpoint
     proposer_boost_root: Root
     equivocating_indices: Set[ValidatorIndex]
     blocks: Dict[Root, BeaconBlock] = field(default_factory=dict)
@@ -128,7 +129,6 @@ class Store(object):
     checkpoint_states: Dict[Checkpoint, BeaconState] = field(default_factory=dict)
     latest_messages: Dict[ValidatorIndex, LatestMessage] = field(default_factory=dict)
     unrealized_justifications: Dict[Root, Checkpoint] = field(default_factory=dict)
-    highest_voting_source: Checkpoint
 ```
 
 #### `get_forkchoice_store`
@@ -267,8 +267,8 @@ def filter_block_tree(store: Store, block_root: Root, blocks: Dict[Root, BeaconB
 
     # The voting source should be at the same height as the store's justified checkpoint
     correct_justified = (
-        store.justified_checkpoint.epoch == GENESIS_EPOCH
-        or voting_source.epoch >= store.highest_voting_source.epoch
+        # Not sure whether we need something special for the GENESIS block
+        voting_source.epoch >= store.highest_voting_source.epoch
     )
 
     finalized_slot = compute_start_slot_at_epoch(store.finalized_checkpoint.epoch)
