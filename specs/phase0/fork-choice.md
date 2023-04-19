@@ -263,12 +263,18 @@ def filter_block_tree(store: Store, block_root: Root, blocks: Dict[Root, BeaconB
             return True
         return False
 
+    current_epoch = compute_epoch_at_slot(get_current_slot(store))
     voting_source = get_voting_source(store, block_root)
 
     # The voting source should be at the same height as the store's justified checkpoint
     correct_justified = (
         # Not sure whether we need something special for the GENESIS block
-        voting_source.epoch >= store.highest_voting_source.epoch
+        voting_source.epoch == store.justified_checkpoint.epoch
+        or
+        (
+            voting_source.epoch >= store.highest_voting_source.epoch
+            and voting_source.epoch + MAX_AGE_VOTING_SOURCE >= current_epoch
+        )
     )
 
     finalized_slot = compute_start_slot_at_epoch(store.finalized_checkpoint.epoch)
