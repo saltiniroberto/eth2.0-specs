@@ -323,7 +323,7 @@ def get_head(store: Store) -> Root:
 #### `updated_highest_voting_source`
 
 ```python
-def updated_highest_voting_source(store: Store):
+def updated_highest_voting_source(store: Store) -> None:
     head = get_head(store)
     voting_source = get_voting_source(store, head)
 
